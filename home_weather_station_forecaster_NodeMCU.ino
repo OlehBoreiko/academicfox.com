@@ -37,7 +37,7 @@ const char* password = "REPLACE_WITH_YOUR_PASSWORD";
 // Replace the next line with your API Key
 #define ONECALLKEY "REPLACE_WITH_YOUR_API_KEY"
 
-// Sample Lat and Lon for Los Angeles
+// Sample Lat and Lon for Lviv, UA
 float myLatitude = 49.8383; //<-----------------------------in range to use GPS coordinates
 float myLongitude = 24.0232; // Coordinates for Lviv, UA. Change these for your city
 
