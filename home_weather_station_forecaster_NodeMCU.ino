@@ -1,9 +1,12 @@
+#include <Arduino_JSON.h>
 #include <ESP8266WebServer.h>
 #include <Wire.h>
 #include <SPI.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BMP280.h>
 #include <ESP8266WiFi.h>
+#include <ESP8266HTTPClient.h>
+#include <WiFiClient.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
 #include "DHT.h"
@@ -28,11 +31,22 @@ OneWire oneWire(ONE_WIRE_BUS);
 DallasTemperature DS18B20(&oneWire);
 Adafruit_BMP280 bme(BMP_CS, BMP_MOSI, BMP_MISO,  BMP_SCK);
 
-const char* ssid = "Enter_yours";
-const char* password = "Enter_yours";
+const char* ssid = "REPLACE_WITH_YOUR_SSID";
+const char* password = "REPLACE_WITH_YOUR_PASSWORD";
+
+// Replace the next line with your API Key
+#define ONECALLKEY "REPLACE_WITH_YOUR_API_KEY"
+
+// Sample Lat and Lon for Los Angeles
+float myLatitude = 49.8383; //<-----------------------------in range to use GPS coordinates
+float myLongitude = 24.0232; // Coordinates for Lviv, UA. Change these for your city
 
 ESP8266WebServer server(80);              
- 
+unsigned long lastTime = 0;
+unsigned long timerDelay = 10000;
+String jsonBuffer;
+String forecast, morning, day, evening, night, humidity, description;
+
 void setup() {
   Serial.begin(115200);
   delay(100);
@@ -61,9 +75,44 @@ void setup() {
 
 }
 
-
 void loop() {
-  server.handleClient();
+  if ((millis() - lastTime) > timerDelay) {
+    // Check WiFi connection status
+    if(WiFi.status()== WL_CONNECTED){
+      String serverPath = "http://api.openweathermap.org/data/2.5/onecall?lat=" + (String)myLatitude + "&lon=" + (String)myLongitude + "&exclude=minutely,hourly&appid=" + ONECALLKEY + "&units=metric";
+      
+      jsonBuffer = httpGETRequest(serverPath.c_str());
+      //Serial.println(jsonBuffer);
+      JSONVar myObject = JSON.parse(jsonBuffer);
+  
+      // JSON.typeof(jsonVar) can be used to get the type of the var
+      if (JSON.typeof(myObject) == "undefined") {
+        Serial.println("Parsing input failed!");
+        return;
+      }
+    
+//      Serial.print("JSON object = ");
+//      Serial.println(myObject);
+      Serial.print("Прогноз: ");
+      description = JSON.stringify(myObject["daily"][0]["weather"][0]["description"]);
+      Serial.println(description);
+      morning = JSON.stringify(myObject["daily"][0]["temp"]["morn"]);
+      Serial.println(morning);
+      day = JSON.stringify(myObject["daily"][0]["temp"]["day"]);
+      Serial.println(day);
+      evening = JSON.stringify(myObject["daily"][0]["temp"]["eve"]);
+      Serial.println(evening);
+      night = JSON.stringify(myObject["daily"][0]["temp"]["night"]);
+      Serial.println(night);
+      humidity = JSON.stringify(myObject["daily"][0]["humidity"]);
+      forecast = "Температура повітря: ранок = " + morning + ", день = " + day + ", вечір = " + evening + ", ніч = " + night + ", вологість = " + humidity + ", " + description + ".";
+    }
+    else {
+      Serial.println("WiFi Disconnected");
+    }
+    lastTime = millis();
+  }
+    server.handleClient();
 }
 
 void handle_OnConnect() {
@@ -86,15 +135,40 @@ void handle_OnConnect() {
   Serial.println(" KPa");
   Serial.print(altitude);
   Serial.println(" m");
-  server.send(200, "text/html", SendHTML(temperature,humidity,pressure,altitude)); 
+  server.send(200, "text/html", SendHTML(temperature,humidity,pressure,altitude,forecast)); 
+}
 
+String httpGETRequest(const char* serverName) {
+  HTTPClient http;
+    
+  // Your IP address with path or Domain name with URL path 
+  http.begin(serverName);
+  
+  // Send HTTP POST request
+  int httpResponseCode = http.GET();
+  
+  String payload = "{}"; 
+  
+  if (httpResponseCode>0) {
+//    Serial.print("HTTP Response code: ");
+//    Serial.println(httpResponseCode);
+    payload = http.getString();
+  }
+  else {
+    Serial.print("Error code: ");
+    Serial.println(httpResponseCode);
+  }
+  // Free resources
+  http.end();
+
+  return payload;
 }
 
 void handle_NotFound(){
   server.send(404, "text/plain", "Not found");
 }
 
-String SendHTML(float temperature, float humidity, float pressure,float altitude){
+String SendHTML(float temperature, float humidity, float pressure,float altitude, String forecast){
   String ptr = "<!DOCTYPE html>";
   ptr +="<html>";
   ptr +="<head>";
@@ -177,6 +251,15 @@ String SendHTML(float temperature, float humidity, float pressure,float altitude
   ptr +="<div class='side-by-side reading'>";
   ptr +=(int)altitude;
   ptr +="<span class='superscript'>m</span></div>";
+  ptr +="</div>";
+  ptr +="<div class='data altitude'>";
+  ptr +="<div class='side-by-side icon'>";
+  ptr +="<img src='https://www.svgrepo.com/show/212029/rain-weather.svg' width='55' height='55'>";
+  ptr +="</div>";  
+  ptr +="<div class='side-by-side text'>Прогноз погоди</div>";
+  ptr +="<div>";
+  ptr +=forecast;
+  ptr +="</div>";
   ptr +="</div>";
   ptr +="</div>";
   ptr +="</body>";
